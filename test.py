@@ -7,14 +7,17 @@ BACKGROUND_COLOR = (230, 230, 250)  # Lavender background
 TILE_COLOR = (100, 100, 255)
 TEXT_COLOR = (255, 255, 255)
 FONT_SIZE = 60
+BUTTON_FONT_SIZE = 30
 FPS = 60  # Increased FPS for smoother transitions
 PADDING = 5
-SLIDE_SPEED = 20  # Speed of tile sliding (larger number = faster)
 TURN_COUNT_HEIGHT = 75  # Height allocated for the turn count display
+BUTTON_WIDTH = 150
+BUTTON_HEIGHT = 50
 
 # Initialize Pygame
 pygame.init()
 font = pygame.font.SysFont('Arial', FONT_SIZE)
+button_font = pygame.font.SysFont('Arial', BUTTON_FONT_SIZE)
 clock = pygame.time.Clock()
 
 class PuzzleNode:
@@ -41,6 +44,12 @@ class PuzzleNode:
         text_rect = text.get_rect(center=(x + tile_size // 2, y + tile_size // 2))
         screen.blit(text, text_rect)
 
+    def get_empty_position(self):
+        for i in range(self.n):
+            for j in range(self.n):
+                if self.state[i][j] == 0:
+                    return (i, j)
+
 def is_solvable(puzzle):
     flat_puzzle = [tile for row in puzzle for tile in row if tile != 0]
     inversions = 0
@@ -58,7 +67,6 @@ def generate_random_puzzle(n):
         
         # Ensure that 0 is at the last position
         if puzzle_2d[-1][-1] != 0:
-            # Swap the last element with the position of 0
             zero_pos = puzzle.index(0)
             puzzle[zero_pos], puzzle[-1] = puzzle[-1], puzzle[zero_pos]
             puzzle_2d = [puzzle[i:i + n] for i in range(0, len(puzzle), n)]
@@ -148,35 +156,6 @@ def solvePuzzle(n, state, heuristic):
     steps, frontierSize, solutions = Astar(state, goal, heuristic)
     return steps, frontierSize, solutions
 
-def update_tile_positions(n, state, prev_state, tile_positions):
-    # Updates the positions of the tiles for smooth transitions
-    tile_size = (WINDOW_SIZE) // n
-    for i in range(n):
-        for j in range(n):
-            val = state[i][j]
-            if val != 0:
-                prev_i, prev_j = [(row, col) for row in range(n) for col in range(n) if prev_state[row][col] == val][0]
-                target_x, target_y = j * tile_size, i * tile_size
-                current_x, current_y = tile_positions[val]
-
-                # Calculate how much the tile should move towards its target
-                delta_x = target_x - current_x
-                delta_y = target_y - current_y
-
-                # Move the tile towards the target by SLIDE_SPEED pixels per frame
-                if abs(delta_x) < SLIDE_SPEED:
-                    current_x = target_x
-                else:
-                    current_x += SLIDE_SPEED if delta_x > 0 else -SLIDE_SPEED
-
-                if abs(delta_y) < SLIDE_SPEED:
-                    current_y = target_y
-                else:
-                    current_y += SLIDE_SPEED if delta_y > 0 else -SLIDE_SPEED
-
-                # Update the position in the tile_positions dictionary
-                tile_positions[val] = (current_x, current_y)
-
 def initialize_tile_positions(n, state):
     # Initializes the position of the tiles based on their grid location
     tile_size = (WINDOW_SIZE) // n
@@ -188,16 +167,19 @@ def initialize_tile_positions(n, state):
                 tile_positions[val] = (j * tile_size, i * tile_size)
     return tile_positions
 
+def draw_button(screen, text, x, y, width, height, color, font, text_color=(0, 0, 0)):
+    pygame.draw.rect(screen, color, (x, y, width, height), border_radius=10)
+    text_surface = font.render(text, True, text_color)
+    text_rect = text_surface.get_rect(center=(x + width // 2, y + height // 2))
+    screen.blit(text_surface, text_rect)
+
 def main():
     n = 3
     random_puzzle = generate_random_puzzle(n)
-
-    print("Generated random puzzle:")
-    for row in random_puzzle:
-        print(row)
+    solved_puzzle = goalstate(random_puzzle)
 
     screen = pygame.display.set_mode((WINDOW_SIZE, WINDOW_SIZE + TURN_COUNT_HEIGHT))
-    pygame.display.set_caption("Puzzle Solver with Swipe Transition")
+    pygame.display.set_caption("Sliding Puzzle Game")
 
     steps, frontierSize, solutions = solvePuzzle(n, random_puzzle, Manhattan_heuristic)
     solution_steps = solutions[1:]
@@ -208,48 +190,86 @@ def main():
     step_idx = 0
     animating = False
     turn_count = 0  # Initialize turn count
+    manual_mode = True  # Control manual solving or auto-solving mode
+
+    tile_size = WINDOW_SIZE // n  # Size of each tile
 
     while running:
         screen.fill(BACKGROUND_COLOR)
 
-        # Draw the puzzle grid
-        if step_idx < len(solution_steps):
-            current_state = solution_steps[step_idx]
-            if step_idx == 0:
-                prev_state = random_puzzle
-            else:
-                prev_state = solution_steps[step_idx - 1]
-        else:
-            current_state = goalstate(random_puzzle)
+        # Draw buttons
+        draw_button(screen, "Reset", 20, WINDOW_SIZE + 10, BUTTON_WIDTH, BUTTON_HEIGHT, (173, 216, 230), button_font)
+        draw_button(screen, "Auto Solve", WINDOW_SIZE - 170, WINDOW_SIZE + 10, BUTTON_WIDTH, BUTTON_HEIGHT, (173, 216, 230), button_font)
 
-        # Update tile positions for smooth swipe transition
-        if animating:
-            update_tile_positions(n, current_state, prev_state, tile_positions)
+        # Display turn count
+        turn_count_text = button_font.render(f"Turns: {turn_count}", True, (0, 0, 0))
+        screen.blit(turn_count_text, (20, WINDOW_SIZE + 60))
 
-        # Check if animation is done
-        if tile_positions == initialize_tile_positions(n, current_state):
-            animating = False
-            if step_idx < len(solution_steps):
-                turn_count += 1  # Increment turn count only when a valid move is made
-            step_idx += 1
+        # Get the current state of the puzzle for drawing
+        current_state = random_puzzle if manual_mode else solution_steps[step_idx] if step_idx < len(solution_steps) else solved_puzzle
 
         puzzle_node = PuzzleNode(n, current_state)
         puzzle_node.draw(screen, tile_positions)
 
-        # Display turn count
-        turn_text = font.render(f"Turns: {turn_count}", True, (0, 0, 0))  # Black text
-        turn_background = pygame.Surface((WINDOW_SIZE, TURN_COUNT_HEIGHT))  # Background for the turn count
-        turn_background.fill((255, 255, 255))  # White background
-        screen.blit(turn_background, (0, WINDOW_SIZE))  # Draw background
-        screen.blit(turn_text, (10, WINDOW_SIZE + 10))  # Draw turn count text
-
+        # Check for events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
 
-        # Start animating the next state
-        if not animating and step_idx < len(solution_steps):
-            animating = True
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                x, y = event.pos
+
+                # Check if reset button is clicked
+                if 20 < x < 20 + BUTTON_WIDTH and WINDOW_SIZE + 10 < y < WINDOW_SIZE + 10 + BUTTON_HEIGHT:
+                    draw_button(screen, "Reset", 20, WINDOW_SIZE + 10, BUTTON_WIDTH, BUTTON_HEIGHT, (173, 196, 230), button_font)  # Darker shade
+                    pygame.display.flip()
+                    pygame.time.delay(100)  # Delay for animation effect
+
+                    random_puzzle = generate_random_puzzle(n)
+                    tile_positions = initialize_tile_positions(n, random_puzzle)
+                    steps, frontierSize, solutions = solvePuzzle(n, random_puzzle, Manhattan_heuristic)
+                    solution_steps = solutions[1:]
+                    step_idx = 0
+                    turn_count = 0
+                    manual_mode = True  # Enable manual mode again
+
+                # Check if auto-solve button is clicked
+                if WINDOW_SIZE - 170 < x < WINDOW_SIZE - 170 + BUTTON_WIDTH and WINDOW_SIZE + 10 < y < WINDOW_SIZE + 10 + BUTTON_HEIGHT:
+                    draw_button(screen, "Auto Solve", WINDOW_SIZE - 170, WINDOW_SIZE + 10, BUTTON_WIDTH, BUTTON_HEIGHT, (173, 196, 230), button_font)  # Darker shade
+                    pygame.display.flip()
+                    pygame.time.delay(100)  # Delay for animation effect
+
+                    manual_mode = False
+                    animating = True
+                    step_idx = 0  # Reset step index for auto-solving
+
+                # Check for tile clicks to move
+                if manual_mode:
+                    clicked_tile_x = x // tile_size
+                    clicked_tile_y = y // tile_size
+
+                    # Get the clicked tile value
+                    if clicked_tile_x < n and clicked_tile_y < n:
+                        clicked_tile_value = random_puzzle[clicked_tile_y][clicked_tile_x]
+                        empty_pos = puzzle_node.get_empty_position()
+                        empty_i, empty_j = empty_pos
+
+                        # Check if clicked tile can move
+                        if (clicked_tile_y == empty_i and abs(clicked_tile_x - empty_j) == 1) or (clicked_tile_x == empty_j and abs(clicked_tile_y - empty_i) == 1):
+                            # Move the clicked tile into the empty space
+                            random_puzzle[empty_i][empty_j], random_puzzle[clicked_tile_y][clicked_tile_x] = random_puzzle[clicked_tile_y][clicked_tile_x], random_puzzle[empty_i][empty_j]
+                            tile_positions = initialize_tile_positions(n, random_puzzle)  # Update tile positions
+                            turn_count += 1  # Increment turn count
+
+        # If auto-solving
+        if not manual_mode and animating:
+            if step_idx < len(solution_steps):
+                random_puzzle = solution_steps[step_idx]
+                tile_positions = initialize_tile_positions(n, random_puzzle)  # Update tile positions
+                step_idx += 1
+            else:
+                animating = False
+                manual_mode = True  # Switch back to manual after auto-solve
 
         pygame.display.flip()
         clock.tick(FPS)

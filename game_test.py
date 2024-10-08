@@ -167,6 +167,22 @@ def draw_button(screen, text, x, y, width, height, color, font, text_color=(0, 0
     text_rect = text_surface.get_rect(center=(x + width // 2, y + height // 2))
     screen.blit(text_surface, text_rect)
 
+def is_puzzle_solved(puzzle):
+    """Check if the puzzle is solved (goal state) with 0 (empty tile) in the last position."""
+    n = len(puzzle)
+    # Create the solved state
+    solved_state = goalstate(puzzle)
+    return puzzle == solved_state  # Check if the current puzzle matches the goal state
+
+def display_win_message(screen):
+    """Display the 'You Win!' message on the screen."""
+    win_font = pygame.font.SysFont('Arial', 80)
+    win_text = win_font.render("You Win!", True, (0, 255, 0))  # Green text
+    win_rect = win_text.get_rect(center=(WINDOW_SIZE // 2, WINDOW_SIZE // 2))
+    screen.blit(win_text, win_rect)
+    pygame.display.flip()
+    pygame.time.delay(2000)  # Show the message for 2 seconds
+
 def main():
     n = 3
     random_puzzle = generate_random_puzzle(n)
@@ -185,7 +201,7 @@ def main():
     animating = False
     turn_count = 0
     manual_mode = True
-
+    puzzle_solved = False  # To track whether the puzzle is solved
     tile_size = WINDOW_SIZE // n
 
     while running:
@@ -197,10 +213,18 @@ def main():
         screen.blit(turn_count_text, (WINDOW_SIZE // 2 - turn_count_text.get_width() // 2, WINDOW_SIZE + 25))
         draw_button(screen, "Auto Solve", WINDOW_SIZE - 170, WINDOW_SIZE + 10, BUTTON_WIDTH, BUTTON_HEIGHT, (173, 216, 230), button_font)
 
+        # Current state depends on manual or auto-solve mode
         current_state = random_puzzle if manual_mode else solution_steps[step_idx] if step_idx < len(solution_steps) else solved_puzzle
 
         puzzle_node = PuzzleNode(n, current_state)
         puzzle_node.draw(screen, tile_positions)
+
+        # Check if the puzzle is solved after each move and before displaying "You Win!"
+        if is_puzzle_solved(random_puzzle) and not puzzle_solved:
+            pygame.display.flip()  # Render the final state of the puzzle
+            pygame.time.delay(500)  # Short delay before the "You Win!" message
+            display_win_message(screen)  # Display "You Win!" message
+            puzzle_solved = True  # Mark puzzle as solved
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -221,6 +245,7 @@ def main():
                     step_idx = 0
                     turn_count = 0
                     manual_mode = True
+                    puzzle_solved = False  # Reset puzzle solved state
 
                 if WINDOW_SIZE - 170 < x < WINDOW_SIZE - 170 + BUTTON_WIDTH and WINDOW_SIZE + 10 < y < WINDOW_SIZE + 10 + BUTTON_HEIGHT:
                     draw_button(screen, "Auto Solve", WINDOW_SIZE - 170, WINDOW_SIZE + 10, BUTTON_WIDTH, BUTTON_HEIGHT, (173, 196, 230), button_font)
@@ -231,7 +256,7 @@ def main():
                     animating = True
                     step_idx = 0
 
-                if manual_mode:
+                if manual_mode and not puzzle_solved:  # Allow clicks only if not solved
                     clicked_tile_x = x // tile_size
                     clicked_tile_y = y // tile_size
 
@@ -241,16 +266,20 @@ def main():
                         empty_i, empty_j = empty_pos
 
                         if (clicked_tile_y == empty_i and abs(clicked_tile_x - empty_j) == 1) or (clicked_tile_x == empty_j and abs(clicked_tile_y - empty_i) == 1):
+                            # Swap clicked tile with the empty tile
                             random_puzzle[empty_i][empty_j], random_puzzle[clicked_tile_y][clicked_tile_x] = random_puzzle[clicked_tile_y][clicked_tile_x], random_puzzle[empty_i][empty_j]
                             tile_positions = initialize_tile_positions(n, random_puzzle)
                             turn_count += 1
+                            pygame.display.flip()  # Ensure the tile swap is rendered
 
-        if not manual_mode and animating:
+        if not manual_mode and animating and not puzzle_solved:
             if step_idx < len(solution_steps):
+                # Update the puzzle state step by step in auto-solve mode
                 random_puzzle = solution_steps[step_idx]
                 tile_positions = initialize_tile_positions(n, random_puzzle)
                 turn_count += 1  # Increment turn count in auto-solve mode
                 step_idx += 1
+                pygame.display.flip()  # Render each step of the solution
             else:
                 animating = False
                 manual_mode = True
